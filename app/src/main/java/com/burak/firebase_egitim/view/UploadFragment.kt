@@ -1,4 +1,4 @@
-package com.burak.firebase_egitim
+package com.burak.firebase_egitim.view
 
 import android.Manifest
 import android.app.Activity.RESULT_OK
@@ -19,8 +19,17 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.navigation.findNavController
 import com.burak.firebase_egitim.databinding.FragmentUploadBinding
 import com.google.android.material.snackbar.Snackbar
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
+import com.google.firebase.storage.FirebaseStorage
+import com.google.firebase.storage.ktx.storage
+import java.util.UUID
 
 class UploadFragment : Fragment() {
     private var _binding: FragmentUploadBinding? = null
@@ -28,12 +37,16 @@ class UploadFragment : Fragment() {
     private lateinit var permissionLauncher : ActivityResultLauncher<String>
     private var secilengorsel : Uri? = null
     var secilenbitmap : Bitmap? = null
-
-    // This property is only valid between onCreateView and onDestroyView.
+    private lateinit var auth: FirebaseAuth
     private val binding get() = _binding!!
+    private lateinit var storage : FirebaseStorage
+    private lateinit var db : FirebaseFirestore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        auth = Firebase.auth
+        storage = Firebase.storage
+        db = Firebase.firestore
         registerLaunchers()
     }
 
@@ -53,7 +66,35 @@ class UploadFragment : Fragment() {
     }
 
     fun yukleFun(view: View) {
-        // Yükleme işlemleri burada yapılacak
+        val uuid = UUID.randomUUID()
+        val gorselIsmi = "${uuid}.jpg"
+        val reference = storage.reference
+        val gorselReference = reference.child("images").child(gorselIsmi)
+        if (secilengorsel != null){
+            gorselReference.putFile(secilengorsel!!).addOnSuccessListener {uploadTask ->
+                gorselReference.downloadUrl.addOnSuccessListener {uri ->
+                    val downloadUrl = uri.toString()
+                    //println(downloadUrl)
+                    //firebase veritabanına veri kaydetmeye başlama
+                    val postMap = hashMapOf<String,Any>()
+                    postMap.put("downloadUrl",downloadUrl)
+                    postMap.put("email",auth.currentUser!!.email!!).toString()
+                    postMap.put("tarih",com.google.firebase.Timestamp.now())
+                    postMap.put("yorum",binding.uploadText.text.toString())
+
+                    db.collection("Posts").add(postMap).addOnSuccessListener {documentReference ->
+                        val action = UploadFragmentDirections.actionUploadFragmentToFeedFragment()
+                        view.findNavController().navigate(action)
+                    }.addOnFailureListener {exception ->
+                        Toast.makeText(requireContext(),exception.localizedMessage,Toast.LENGTH_LONG).show()
+                    }
+                }
+            }.addOnFailureListener {exception ->
+                Toast.makeText(requireContext(),exception.localizedMessage,Toast.LENGTH_LONG).show()
+            }
+        }else{
+            Toast.makeText(requireContext(),"Lütfen bir resim seçin",Toast.LENGTH_LONG).show()
+        }
     }
 
     fun gorselSec(view: View) {
